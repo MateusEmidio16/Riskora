@@ -1,0 +1,904 @@
+RISKORA — SYSTEM ARCHITECTURE
+=================================
+
+PRODUCT VISION
+--------------
+Riskora is a Security Visibility, Monitoring and Threat Detection SaaS for small and growing businesses.
+
+The product does NOT aim to replace a WAF, firewall, EDR, SIEM or dedicated security team.
+Its purpose is to help businesses:
+
+1. Understand their public security posture.
+2. Detect suspicious activity and possible attacks.
+3. Group related events into incidents.
+4. Alert the responsible team quickly.
+5. Provide useful context and recommended actions.
+6. Monitor their security posture continuously.
+
+Core principle:
+"Know when something is wrong with your digital security."
+
+Riskora should initially focus on passive/public-domain assessment, monitoring and alerting. It should not actively exploit customer systems or attempt unauthorized attacks.
+
+
+==================================================
+1. HIGH-LEVEL PRODUCT ARCHITECTURE
+==================================================
+
+                         ┌──────────────────────┐
+                         │       CUSTOMER       │
+                         │       BROWSER        │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │     Next.js Web App  │
+                         │   TypeScript UI      │
+                         └──────────┬───────────┘
+                                    │ REST / HTTPS
+                                    ▼
+                         ┌──────────────────────┐
+                         │    Spring Boot API   │
+                         │        Java          │
+                         └──────────┬───────────┘
+                                    │
+              ┌─────────────────────┼─────────────────────┐
+              │                     │                     │
+              ▼                     ▼                     ▼
+        PostgreSQL              Redis               Keycloak
+        Persistent DB       Cache / Rate Limit      Auth / OIDC
+              │
+              │
+              ▼
+        ┌─────────────────────────────────────────┐
+        │              APPLICATION CORE           │
+        │                                         │
+        │ Domain Management                       │
+        │ Scan Management                         │
+        │ Security Findings                       │
+        │ Security Score                          │
+        │ Monitoring                              │
+        │ Events                                  │
+        │ Detection                               │
+        │ Incidents                               │
+        │ Alerts                                  │
+        │ Reports                                 │
+        └──────────────────┬──────────────────────┘
+                           │
+                           ▼
+                       RabbitMQ
+                     Async Messaging
+                           │
+           ┌───────────────┼────────────────┐
+           ▼               ▼                ▼
+      DNS Worker       TLS Worker       HTTP Worker
+           │               │                │
+           └───────────────┼────────────────┘
+                           ▼
+                    Detection Engine
+                           │
+                           ▼
+                    Incident Engine
+                           │
+                           ▼
+                     Alert Engine
+                           │
+              ┌────────────┼─────────────┐
+              ▼            ▼             ▼
+            Email         Slack        Teams
+                           │
+                           ▼
+                        Webhooks
+
+
+==================================================
+2. MAIN TECHNOLOGIES
+==================================================
+
+FRONTEND
+--------
+- Next.js
+- TypeScript
+- React
+- REST API communication
+- Responsive web UI
+
+BACKEND
+-------
+- Java
+- Spring Boot
+- Spring Web
+- Spring Data JPA
+- Bean Validation
+- Spring Boot Actuator
+
+DATABASE
+--------
+- PostgreSQL
+- Flyway for database migrations
+
+ASYNC PROCESSING
+----------------
+- RabbitMQ
+- Worker-based architecture
+
+CACHE / RATE LIMITING
+---------------------
+- Redis
+
+AUTHENTICATION
+--------------
+- Keycloak
+- OAuth2
+- OpenID Connect
+- JWT
+
+CONTAINERIZATION
+----------------
+- Docker
+- Docker Compose for local development
+
+ORCHESTRATION
+-------------
+- Kubernetes
+- Deployments
+- Services
+- ConfigMaps
+- Secrets
+- Ingress
+- HPA
+
+CI/CD
+-----
+- GitHub Actions
+
+OBSERVABILITY
+-------------
+- Prometheus
+- Grafana
+- Loki
+
+PAYMENTS
+--------
+- Stripe
+
+EMAIL / NOTIFICATIONS
+---------------------
+- Email provider
+- Slack integration
+- Microsoft Teams integration
+- Webhooks
+
+EXTERNAL SECURITY INTEGRATIONS
+------------------------------
+- Cloudflare integration can be added later.
+- Riskora should consume security/traffic events where possible rather than trying to recreate Cloudflare's WAF/DDoS infrastructure.
+
+
+==================================================
+3. CORE DOMAIN MODEL
+==================================================
+
+Initial entities:
+
+Organization
+------------
+id
+name
+created_at
+
+Domain
+------
+id
+organization_id
+hostname
+created_at
+
+Scan
+----
+id
+domain_id
+status
+started_at
+finished_at
+score
+
+Finding
+-------
+id
+scan_id
+category
+severity
+title
+description
+recommendation
+
+Future monitoring entities:
+
+SecurityEvent
+-------------
+id
+domain_id
+timestamp
+event_type
+source
+destination
+ip
+endpoint
+metadata
+severity
+
+Detection
+---------
+id
+security_event_id
+type
+confidence
+severity
+description
+created_at
+
+Incident
+--------
+id
+organization_id
+domain_id
+title
+type
+severity
+confidence
+status
+started_at
+last_activity
+resolved_at
+
+Alert
+-----
+id
+incident_id
+channel
+status
+sent_at
+
+
+==================================================
+4. CORE DATA FLOW — SECURITY ASSESSMENT
+==================================================
+
+User
+ |
+ | enters domain
+ v
+POST /api/domains
+ |
+ v
+Domain
+ |
+ v
+POST /api/scans
+ |
+ v
+Scan
+ |
+ v
+Security Scanner
+ |
+ +--> DNS Scanner
+ |
+ +--> TLS Scanner
+ |
+ +--> HTTP Scanner
+ |
+ +--> SPF / DMARC checks
+ |
+ v
+Findings
+ |
+ v
+Score Engine
+ |
+ v
+Security Score
+ |
+ v
+PostgreSQL
+ |
+ v
+Frontend Dashboard
+
+
+==================================================
+5. SCANNER ARCHITECTURE
+==================================================
+
+The first scanner version should run simply inside the backend.
+
+After the MVP is proven, scanning becomes asynchronous.
+
+Target architecture:
+
+API
+ |
+ v
+Create Scan
+ |
+ v
+RabbitMQ
+ |
+ +--> DNS Worker
+ |
+ +--> TLS Worker
+ |
+ +--> HTTP Worker
+ |
+ v
+Results
+ |
+ v
+PostgreSQL
+ |
+ v
+Score Engine
+
+
+DNS SCANNER
+-----------
+Checks:
+- A
+- AAAA
+- MX
+- TXT
+- SPF
+- DMARC
+
+TLS SCANNER
+-----------
+Checks:
+- HTTPS availability
+- Certificate validity
+- Certificate hostname
+- Certificate expiration
+- TLS protocol/version
+
+HTTP SECURITY SCANNER
+---------------------
+Checks:
+- HSTS
+- CSP
+- X-Content-Type-Options
+- X-Frame-Options
+- Referrer-Policy
+- HTTP status
+- Redirect behavior
+
+
+==================================================
+6. FINDING MODEL
+==================================================
+
+All scanners should produce standardized findings.
+
+Example:
+
+category:
+EMAIL_SECURITY
+
+severity:
+HIGH
+
+title:
+DMARC is not configured
+
+description:
+The domain does not publish a DMARC policy.
+
+recommendation:
+Configure a DMARC policy for the domain.
+
+
+Severity levels:
+
+CRITICAL
+HIGH
+MEDIUM
+LOW
+INFO
+
+
+==================================================
+7. SECURITY SCORE
+==================================================
+
+Initial score:
+100
+
+Example penalties:
+
+CRITICAL = -25
+HIGH     = -15
+MEDIUM   = -8
+LOW      = -3
+
+Example:
+
+100
+-15 DMARC
+-8  CSP
+-3  Referrer Policy
+=
+74/100
+
+The scoring system should later become more sophisticated.
+
+
+==================================================
+8. FUTURE MONITORING ARCHITECTURE
+==================================================
+
+The product evolves from a scanner into a continuous monitoring platform.
+
+Customer Website / Infrastructure
+              |
+              v
+      Security Event Sources
+              |
+              v
+       Event Ingestion Layer
+              |
+              v
+           RabbitMQ
+              |
+              v
+       Detection Engine
+              |
+       ┌──────┴───────┐
+       ▼              ▼
+    Normal         Suspicious
+                         |
+                         v
+                  Risk Assessment
+                         |
+                         v
+                    Incident
+                         |
+                         v
+                      Alert
+                         |
+            ┌────────────┼────────────┐
+            ▼            ▼            ▼
+          Email        Slack        Teams
+                         |
+                         ▼
+                      Webhook
+
+
+==================================================
+9. SECURITY EVENT MODEL
+==================================================
+
+A SecurityEvent represents an observed event.
+
+Example:
+
+timestamp:
+2026-08-08 21:42
+
+source:
+185.x.x.x
+
+endpoint:
+/login
+
+event_type:
+AUTHENTICATION_FAILURE
+
+metadata:
+failed_attempt=true
+
+The event itself is NOT automatically an attack.
+
+The Detection Engine evaluates patterns.
+
+
+==================================================
+10. DETECTION ENGINE
+==================================================
+
+Initial rule-based detection.
+
+Possible detections:
+
+BRUTE FORCE
+-----------
+Many failed authentication attempts from one source.
+
+CREDENTIAL STUFFING
+-------------------
+Many usernames/accounts with repeated authentication failures.
+
+PATH ENUMERATION
+----------------
+Large number of requests to suspicious paths such as:
+- /admin
+- /wp-login.php
+- /.env
+- /phpmyadmin
+
+RECONNAISSANCE
+--------------
+Repeated requests to discover application paths or infrastructure.
+
+SQL INJECTION PATTERN
+---------------------
+Suspicious request patterns matching known SQL injection indicators.
+
+XSS PATTERN
+-----------
+Suspicious request patterns matching common XSS indicators.
+
+BOT / TRAFFIC ANOMALY
+---------------------
+Abnormal request volume compared with the normal baseline.
+
+AUTHENTICATION ANOMALY
+----------------------
+Unusual authentication behavior.
+
+DNS CHANGE
+----------
+Unexpected DNS configuration changes.
+
+CERTIFICATE CHANGE
+------------------
+Unexpected TLS certificate changes.
+
+IMPORTANT:
+Detection should describe activity as suspicious or potentially malicious unless there is sufficient evidence to make a stronger claim.
+
+
+==================================================
+11. EVENT → DETECTION → INCIDENT → ALERT
+==================================================
+
+RAW EVENTS
+    |
+    v
+Detection Engine
+    |
+    v
+Detection
+    |
+    v
+Risk Assessment
+    |
+    v
+Incident Correlation
+    |
+    v
+Incident
+    |
+    v
+Alert Engine
+    |
+    +--> Email
+    +--> Slack
+    +--> Teams
+    +--> Webhook
+
+
+This separation is important.
+
+EVENT:
+Something happened.
+
+DETECTION:
+A suspicious pattern was identified.
+
+INCIDENT:
+Multiple related detections/events were grouped into a security incident.
+
+ALERT:
+The customer was notified.
+
+
+==================================================
+12. INCIDENT EXAMPLE
+==================================================
+
+Incident:
+Possible Brute-force Attack
+
+Severity:
+HIGH
+
+Confidence:
+87%
+
+Started:
+22:41
+
+Last activity:
+22:49
+
+Affected:
+example.com/login
+
+Requests:
+1,842
+
+Failed logins:
+724
+
+Sources:
+34 IP addresses
+
+Recommended actions:
+- Review authentication logs.
+- Check affected accounts.
+- Consider enabling MFA.
+- Investigate suspicious source addresses.
+
+
+==================================================
+13. ALERTING
+==================================================
+
+Customers should be able to configure:
+
+Email
+Slack
+Microsoft Teams
+Webhook
+
+Example:
+
+🚨 HIGH SEVERITY SECURITY ALERT
+
+Suspicious activity detected on example.com.
+
+Activity:
+Brute-force pattern
+
+First detected:
+22:41
+
+Requests:
+1,842
+
+Confidence:
+High
+
+View Incident
+
+
+Alert severity behavior:
+
+LOW
+- Dashboard event
+
+MEDIUM
+- Email
+
+HIGH
+- Email + Slack/Teams
+
+CRITICAL
+- Email + Slack/Teams + Webhook
+
+
+==================================================
+14. FRONTEND
+==================================================
+
+Main pages:
+
+/
+Landing Page
+
+/login
+Authentication
+
+/dashboard
+Overview
+
+/dashboard/domains
+Domains
+
+/dashboard/scans
+Scans
+
+/dashboard/incidents
+Security Incidents
+
+/dashboard/reports
+Reports
+
+/dashboard/settings
+Settings / integrations
+
+
+Dashboard should eventually display:
+
+Security Score
+Active Incidents
+Suspicious Events
+Blocked/flagged activity where available
+Recent Findings
+Security Trends
+Monitored Assets
+
+
+==================================================
+15. AUTHENTICATION & MULTI-TENANCY
+==================================================
+
+User
+ |
+ v
+Keycloak
+ |
+ v
+JWT
+ |
+ v
+Spring Boot
+
+Organization model:
+
+Organization
+ |
+ +--> User
+ +--> User
+ |
+ +--> Domain
+ +--> Domain
+ |
+ +--> Scans
+ +--> Incidents
+ +--> Alerts
+
+
+Users must only access resources belonging to their organization.
+
+
+==================================================
+16. RISKORA AS CUSTOMER ZERO
+==================================================
+
+Riskora should monitor itself.
+
+Organization:
+Riskora
+
+Assets:
+- riskora.com
+- api.riskora.com
+- infrastructure
+- Kubernetes cluster
+- other public assets when appropriate
+
+Riskora's own platform becomes the first customer of Riskora.
+
+Internal rule:
+
+"If Riskora cannot detect what is happening to Riskora, we should not expect customers to trust it."
+
+
+Riskora should monitor:
+- website
+- API
+- authentication
+- DNS
+- TLS
+- infrastructure events
+- suspicious traffic
+- incidents
+
+
+==================================================
+17. EXTERNAL MONITORING
+==================================================
+
+Riskora should NOT rely exclusively on itself to know if Riskora is down.
+
+Use independent external uptime/health monitoring.
+
+Flow:
+
+External Monitor
+       |
+       | "Is Riskora available?"
+       v
+Riskora
+
+If Riskora is completely unavailable:
+External monitoring alerts the team.
+
+This avoids the monitoring-system paradox.
+
+
+==================================================
+18. SECURITY PRINCIPLES
+==================================================
+
+- Monitor authorized assets.
+- Start with passive/public security checks.
+- Do not actively exploit customer systems.
+- Do not claim certainty when only suspicious activity was detected.
+- Validate all input.
+- Rate limit APIs and scans.
+- Use least-privilege credentials.
+- Never commit secrets.
+- Protect customer data.
+- Separate organizations securely.
+- Keep audit logs.
+- Use HTTPS.
+- Secure authentication.
+- Add independent monitoring.
+
+
+==================================================
+19. TARGET ARCHITECTURE
+==================================================
+
+Browser
+   |
+   v
+Next.js
+   |
+   v
+Spring Boot API
+   |
+   +--> Keycloak
+   +--> PostgreSQL
+   +--> Redis
+   +--> RabbitMQ
+            |
+            +--> Scanner Workers
+            +--> Event Processing
+            +--> Detection Engine
+            +--> Incident Engine
+            +--> Alert Engine
+   |
+   +--> Stripe
+   +--> Email
+   +--> Slack
+   +--> Teams
+   +--> Webhooks
+   +--> Cloudflare (future integration)
+
+Infrastructure:
+Docker
+Kubernetes
+GitHub Actions
+Prometheus
+Grafana
+Loki
+
+
+==================================================
+20. PRODUCT EVOLUTION
+==================================================
+
+V1:
+Security Assessment
+"What is wrong?"
+
+V2:
+Continuous Monitoring
+"What is happening?"
+
+V3:
+Threat Detection
+"Could this be an attack?"
+
+V4:
+Incident Response Support
+"What should we do?"
+
+V5:
+Security Intelligence
+"What does this activity mean over time?"
+
+Riskora is primarily a visibility, monitoring, detection and alerting platform.
+It is not positioned as a replacement for dedicated attack prevention infrastructure.

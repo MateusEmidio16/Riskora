@@ -1,0 +1,1131 @@
+RISKORA — DEVELOPMENT ROADMAP
+================================
+
+PRODUCT GOAL
+------------
+Build a SaaS platform that allows small and growing businesses to:
+
+1. Assess their public security posture.
+2. Continuously monitor their digital assets.
+3. Detect suspicious activity and possible attacks.
+4. Group activity into incidents.
+5. Alert the responsible team.
+6. Provide context and recommended actions.
+
+Core product evolution:
+
+Security Scanner
+       ↓
+Security Monitoring
+       ↓
+Threat Detection
+       ↓
+Incident Management
+       ↓
+Security Intelligence
+
+
+==================================================
+PHASE 0 — DEFINE THE PRODUCT
+==================================================
+
+Goal:
+Clearly define the V1 product before coding.
+
+Initial V1 checks:
+
+DNS:
+- A
+- AAAA
+- MX
+- SPF
+- DMARC
+
+TLS:
+- HTTPS
+- Certificate validity
+- Expiration
+- Hostname
+- TLS version
+
+HTTP:
+- HSTS
+- CSP
+- X-Content-Type-Options
+- X-Frame-Options
+- Referrer-Policy
+- HTTP status
+- Redirects
+
+Do NOT start with:
+- AI
+- Kubernetes
+- Stripe
+- Complex WAF functionality
+- Active exploitation
+
+
+==================================================
+PHASE 1 — DEVELOPMENT ENVIRONMENT
+==================================================
+
+Install:
+- IntelliJ IDEA
+- Java 21+
+- Node.js
+- npm
+- Docker Desktop
+- Git
+- GitHub
+- PostgreSQL client
+- Postman or Bruno
+
+Verify:
+java --version
+node --version
+npm --version
+docker --version
+git --version
+
+
+==================================================
+PHASE 2 — GIT REPOSITORY
+==================================================
+
+Create:
+
+securelens/
+(or rename to the final Riskora repository name)
+
+Structure:
+
+securelens/
+├── README.md
+├── docs/
+│   ├── architecture.md
+│   ├── security-model.md
+│   └── api.md
+├── backend/
+├── frontend/
+├── scanners/
+├── docker-compose.yml
+└── .gitignore
+
+First commit:
+"Initial project structure"
+
+
+==================================================
+PHASE 3 — SPRING BOOT BACKEND
+==================================================
+
+Create Spring Boot project.
+
+Dependencies:
+- Spring Web
+- Spring Data JPA
+- PostgreSQL Driver
+- Validation
+- Spring Boot Actuator
+- Flyway
+
+Java:
+21+
+
+
+==================================================
+PHASE 4 — FIRST ENDPOINT
+==================================================
+
+Create:
+
+GET /api/health
+
+Response:
+
+SecureLens API is running
+
+Milestone:
+Browser/Postman → Spring Boot → Response
+
+Commit:
+"Create initial Spring Boot API"
+
+
+==================================================
+PHASE 5 — POSTGRESQL
+==================================================
+
+Run PostgreSQL with Docker.
+
+Database:
+securelens
+
+Configure Spring Boot connection.
+
+Do not hardcode secrets.
+
+Use:
+- .env
+- local configuration
+- .gitignore
+
+
+==================================================
+PHASE 6 — DATABASE MODEL
+==================================================
+
+Create:
+
+Organization
+- id
+- name
+- created_at
+
+Domain
+- id
+- organization_id
+- hostname
+- created_at
+
+Scan
+- id
+- domain_id
+- status
+- started_at
+- finished_at
+- score
+
+Finding
+- id
+- scan_id
+- category
+- severity
+- title
+- description
+- recommendation
+
+Future entities:
+- SecurityEvent
+- Detection
+- Incident
+- Alert
+
+
+==================================================
+PHASE 7 — FLYWAY
+==================================================
+
+Create migrations:
+
+V1__create_organizations.sql
+V2__create_domains.sql
+V3__create_scans.sql
+V4__create_findings.sql
+
+Database structure must be version controlled.
+
+
+==================================================
+PHASE 8 — DOMAIN API
+==================================================
+
+Implement:
+
+POST /api/domains
+
+GET /api/domains
+
+GET /api/domains/{id}
+
+Example:
+
+POST /api/domains
+
+{
+  "hostname": "example.com"
+}
+
+
+==================================================
+PHASE 9 — SCAN API
+==================================================
+
+Implement:
+
+POST /api/scans
+
+Create Scan entity.
+
+Initial flow:
+
+API
+ ↓
+ScanService
+ ↓
+SecurityScanner
+ ↓
+Results
+ ↓
+PostgreSQL
+
+
+==================================================
+PHASE 10 — DNS SCANNER
+==================================================
+
+Create DnsScanner.
+
+Check:
+- A
+- AAAA
+- MX
+- TXT
+
+Then:
+- SPF
+- DMARC
+
+Return structured results.
+
+
+==================================================
+PHASE 11 — FINDING MODEL
+==================================================
+
+Standardize scanner output.
+
+Example:
+
+category:
+EMAIL_SECURITY
+
+severity:
+HIGH
+
+title:
+DMARC is not configured
+
+description:
+The domain does not publish a DMARC policy.
+
+recommendation:
+Configure a DMARC policy.
+
+
+==================================================
+PHASE 12 — TLS SCANNER
+==================================================
+
+Create TlsScanner.
+
+Check:
+- HTTPS
+- certificate
+- expiration
+- hostname
+- TLS version
+
+
+==================================================
+PHASE 13 — HTTP SECURITY SCANNER
+==================================================
+
+Create HttpSecurityScanner.
+
+Check:
+- Strict-Transport-Security
+- Content-Security-Policy
+- X-Content-Type-Options
+- X-Frame-Options
+- Referrer-Policy
+- status
+- redirects
+
+
+==================================================
+PHASE 14 — SCORING ENGINE
+==================================================
+
+Start:
+100 points
+
+Example penalties:
+
+Critical = -25
+High     = -15
+Medium   = -8
+Low      = -3
+
+Example:
+
+100
+-15 DMARC
+-8 CSP
+-3 Referrer Policy
+=
+74/100
+
+Keep scoring simple initially.
+
+
+==================================================
+PHASE 15 — FIRST COMPLETE SCAN / MVP CORE
+==================================================
+
+THIS IS YOUR CURRENT PHASE.
+
+Goal:
+
+Make this entire pipeline work:
+
+Domain
+ ↓
+Scan
+ ↓
+DNS / TLS / HTTP checks
+ ↓
+Findings
+ ↓
+Score
+ ↓
+PostgreSQL
+ ↓
+API response
+
+Example result:
+
+{
+  "scanId": 42,
+  "status": "COMPLETED",
+  "score": 74,
+  "findings": [
+    {
+      "severity": "HIGH",
+      "title": "DMARC not configured"
+    },
+    {
+      "severity": "MEDIUM",
+      "title": "Content Security Policy missing"
+    }
+  ]
+}
+
+IMPORTANT:
+At this stage, store scan results as historical data.
+
+We eventually want:
+
+January: 71
+February: 76
+March: 82
+April: 88
+
+This enables security posture trends later.
+
+MILESTONE:
+FIRST REAL SECURITY SCAN WORKING END-TO-END.
+
+
+==================================================
+PHASE 16 — FRONTEND
+==================================================
+
+Technology:
+Next.js + TypeScript
+
+Pages:
+
+/
+Landing page
+
+/login
+Login
+
+/dashboard
+Overview
+
+/dashboard/domains
+Domains
+
+/dashboard/scans
+Scans
+
+/dashboard/reports
+Reports
+
+Initial dashboard:
+
+example.com
+
+Security Score
+74/100
+
+Critical: 0
+High: 1
+Medium: 2
+Passed: 12
+
+
+==================================================
+PHASE 17 — AUTHENTICATION
+==================================================
+
+Integrate Keycloak.
+
+Learn:
+- OAuth2
+- OIDC
+- JWT
+- Roles
+
+Flow:
+
+Browser
+ ↓
+Keycloak
+ ↓
+JWT
+ ↓
+Spring Boot
+
+
+==================================================
+PHASE 18 — ORGANIZATIONS & USERS
+==================================================
+
+Transform:
+
+User → Domains
+
+into:
+
+Organization
+ ├── User
+ ├── User
+ └── Domains
+       ├── company.com
+       └── company.pt
+
+Enforce tenant isolation.
+
+
+==================================================
+PHASE 19 — CONTINUOUS MONITORING
+==================================================
+
+This is where Riskora evolves beyond a scanner.
+
+Goal:
+Observe ongoing security-relevant activity.
+
+Possible monitored signals:
+- traffic anomalies
+- authentication failures
+- suspicious requests
+- path enumeration
+- bot activity
+- DNS changes
+- TLS/certificate changes
+- infrastructure/security events
+
+Core concept:
+
+SecurityEvent
+
+An event means:
+"Something happened."
+
+It does NOT automatically mean:
+"An attack happened."
+
+
+==================================================
+PHASE 20 — EVENT INGESTION
+==================================================
+
+Create event ingestion architecture.
+
+Sources can eventually include:
+- customer integrations
+- Cloudflare
+- web/application logs
+- webhooks
+- infrastructure telemetry
+
+Flow:
+
+Event Source
+ ↓
+Event Ingestion
+ ↓
+RabbitMQ
+ ↓
+Processing
+
+
+Do not build every integration immediately.
+
+Start with one controlled event source.
+
+
+==================================================
+PHASE 21 — DETECTION ENGINE
+==================================================
+
+Build rule-based detection first.
+
+Do NOT start with AI.
+
+Initial detections:
+
+1. Brute-force
+2. Credential stuffing
+3. Path enumeration
+4. Reconnaissance
+5. SQL injection patterns
+6. XSS patterns
+7. Bot/traffic anomaly
+8. Authentication anomaly
+9. DNS change
+10. Certificate change
+
+Example:
+
+100+ failed logins
++
+same source/network
++
+short time window
+=
+Possible brute-force detection
+
+
+IMPORTANT:
+Use language such as:
+"Suspicious activity detected"
+"Possible brute-force attack"
+
+Do not claim:
+"You were hacked"
+
+unless there is sufficient evidence.
+
+
+==================================================
+PHASE 22 — INCIDENT ENGINE
+==================================================
+
+Do not show customers hundreds of raw events.
+
+Group related events.
+
+Architecture:
+
+RAW EVENTS
+ ↓
+Detection
+ ↓
+Risk Assessment
+ ↓
+Incident Correlation
+ ↓
+Incident
+
+Example:
+
+Incident:
+Possible Brute-force Attack
+
+Severity:
+HIGH
+
+Confidence:
+87%
+
+Started:
+22:41
+
+Last activity:
+22:49
+
+Requests:
+1,842
+
+Failed logins:
+724
+
+Sources:
+34 IP addresses
+
+Affected:
+example.com/login
+
+
+==================================================
+PHASE 23 — ALERTING
+==================================================
+
+Customers configure:
+
+- Email
+- Slack
+- Microsoft Teams
+- Webhook
+
+Severity behavior:
+
+LOW:
+Dashboard only
+
+MEDIUM:
+Email
+
+HIGH:
+Email + Slack/Teams
+
+CRITICAL:
+Email + Slack/Teams + Webhook
+
+Example alert:
+
+🚨 HIGH SEVERITY SECURITY ALERT
+
+Suspicious activity detected on example.com.
+
+Activity:
+Brute-force pattern
+
+Requests:
+1,842
+
+Confidence:
+High
+
+View Incident
+
+
+==================================================
+PHASE 24 — RISKORA AS CUSTOMER ZERO
+==================================================
+
+Riskora monitors Riskora.
+
+Create internal organization:
+
+Riskora
+
+Assets:
+- riskora.com
+- api.riskora.com
+- infrastructure
+- Kubernetes cluster
+- other approved public assets
+
+Monitor:
+- website
+- API
+- authentication
+- DNS
+- TLS
+- suspicious traffic
+- security events
+- incidents
+
+Internal principle:
+
+"If Riskora cannot detect what is happening to Riskora, we should not expect customers to trust it."
+
+This is also a major dogfooding/testing environment.
+
+
+==================================================
+PHASE 25 — EXTERNAL MONITORING
+==================================================
+
+Do not rely only on Riskora to monitor Riskora.
+
+Use independent external uptime/health monitoring.
+
+Flow:
+
+External Monitor
+ ↓
+Riskora
+
+If Riskora is completely unavailable:
+External monitor alerts the team.
+
+This prevents the monitoring-system paradox.
+
+
+==================================================
+PHASE 26 — ASYNCHRONOUS SCANNING
+==================================================
+
+Now introduce RabbitMQ if not already used for event processing.
+
+Architecture:
+
+API
+ ↓
+Create Scan
+ ↓
+RabbitMQ
+ ↓
+Workers
+
+Workers:
+- DNS Worker
+- TLS Worker
+- HTTP Worker
+
+Later:
+- other scanners
+
+
+==================================================
+PHASE 27 — REDIS
+==================================================
+
+Use Redis for:
+
+- rate limiting
+- caching
+- duplicate scan prevention
+- temporary state
+
+Example:
+
+Free user:
+5 scans/day
+
+
+==================================================
+PHASE 28 — SCHEDULED SCANS
+==================================================
+
+Allow:
+
+Manual
+Weekly
+Daily
+
+Flow:
+
+Scheduler
+ ↓
+Create Scan
+ ↓
+RabbitMQ
+ ↓
+Workers
+ ↓
+Results
+ ↓
+Score
+ ↓
+Notification
+
+
+==================================================
+PHASE 29 — EMAIL / REPORTS
+==================================================
+
+Email notifications:
+
+Security Alert
+Score change
+New finding
+Certificate expiration
+Incident detected
+
+Generate PDF security reports.
+
+Report sections:
+- Security Score
+- Executive Summary
+- Findings
+- Severity
+- Recommendations
+- Historical score
+
+
+==================================================
+PHASE 30 — STRIPE / BILLING
+==================================================
+
+Only after the product works.
+
+Possible initial plans:
+
+FREE
+- 1 domain
+- 1 scan/month
+- basic report
+
+PRO
+- multiple domains
+- monitoring
+- alerts
+- scheduled scans
+- PDF reports
+
+BUSINESS
+- more domains
+- team members
+- webhooks
+- API
+- advanced analytics
+
+Pricing must be validated with real users before committing.
+
+
+==================================================
+PHASE 31 — DOCKER
+==================================================
+
+Containerize:
+
+- frontend
+- backend
+- postgres
+- rabbitmq
+- redis
+- keycloak
+- workers
+
+Local environment:
+
+docker compose up
+
+
+==================================================
+PHASE 32 — CI/CD
+==================================================
+
+GitHub Actions:
+
+git push
+ ↓
+Tests
+ ↓
+Build
+ ↓
+Docker image
+ ↓
+Deploy
+
+
+Add:
+- unit tests
+- integration tests
+- API tests
+- scanner tests
+
+
+==================================================
+PHASE 33 — CLOUD DEPLOYMENT
+==================================================
+
+Deploy the application to a real cloud environment.
+
+Do this before Kubernetes if needed.
+
+Goal:
+Have a real public environment for testing.
+
+
+==================================================
+PHASE 34 — KUBERNETES
+==================================================
+
+Now introduce Kubernetes.
+
+Start with:
+- Deployment
+- Service
+- ConfigMap
+- Secret
+- Ingress
+
+Then:
+- HPA
+
+Workers can scale independently.
+
+Example:
+
+10,000 events
+ ↓
+RabbitMQ
+ ↓
+Worker replicas scale
+
+
+==================================================
+PHASE 35 — OBSERVABILITY
+==================================================
+
+Add:
+
+Prometheus
+Grafana
+Loki
+
+Monitor:
+
+- API latency
+- scan duration
+- failed scans
+- queue depth
+- worker health
+- database connections
+- event processing
+- detection latency
+- alert delivery failures
+
+
+==================================================
+PHASE 36 — SECURITY HARDENING
+==================================================
+
+API:
+- input validation
+- rate limiting
+- authentication
+- authorization
+- CORS
+- secure headers
+
+Database:
+- least privilege
+- parameterized queries
+- encrypted credentials
+
+Infrastructure:
+- secrets
+- HTTPS
+- restricted network access
+- container security
+
+Scanner:
+- authorized/public targets only
+- strict scope controls
+- no arbitrary exploitation
+
+
+==================================================
+FINAL PRODUCT ARCHITECTURE
+==================================================
+
+                        CUSTOMER
+                           |
+                           v
+                       Next.js
+                           |
+                           v
+                    Spring Boot API
+                           |
+        ┌──────────────────┼──────────────────┐
+        |                  |                  |
+        v                  v                  v
+    Keycloak          PostgreSQL            Redis
+        |
+        |
+        v
+      JWT
+
+Spring Boot
+    |
+    +--> Security Assessment
+    |
+    +--> Monitoring
+    |
+    +--> Event Ingestion
+    |
+    +--> RabbitMQ
+              |
+              +--> Scanner Workers
+              |
+              +--> Detection Workers
+              |
+              +--> Incident Processing
+              |
+              +--> Alert Processing
+    |
+    +--> Stripe
+    +--> Email
+    +--> Slack
+    +--> Teams
+    +--> Webhooks
+    +--> Cloudflare integration
+
+
+==================================================
+PRODUCT EVOLUTION SUMMARY
+==================================================
+
+PHASE 15:
+"How secure am I?"
+
+PHASE 19:
+"What's happening?"
+
+PHASE 21:
+"Could this be an attack?"
+
+PHASE 22:
+"What's the incident?"
+
+PHASE 23:
+"Who needs to know?"
+
+PHASE 24:
+"Does Riskora detect attacks against itself?"
+
+PHASE 29+:
+"Can we operate this reliably as a real SaaS?"
+
+
+==================================================
+IMPORTANT DEVELOPMENT RULE
+==================================================
+
+Do not build the entire architecture at once.
+
+At the current stage, focus only on:
+
+Domain
+ ↓
+Scan
+ ↓
+DNS/TLS/HTTP
+ ↓
+Findings
+ ↓
+Score
+ ↓
+Database
+ ↓
+API
+
+After this works, build the frontend.
+
+Then authentication.
+
+Then monitoring.
+
+Then event ingestion.
+
+Then detection.
+
+Then incidents.
+
+Then alerts.
+
+Then integrations.
+
+Then infrastructure scaling.
+
+The goal is to continuously have a working product while increasing complexity only when it is justified.

@@ -1,0 +1,972 @@
+Architecture plan SecureScanSite
+
+For this product, the browser is actually the better first platform because the customer is likely to be a business owner/IT person who wants to open a dashboard, enter a domain, see a score, and download a report. An iOS app would add a lot of work without validating the business.
+
+And this is a very good project for you because we can design it as a **real SaaS**, not just a university project.
+
+## The product I'd build
+
+Let's call it **SecureLens** for now.
+
+The basic flow:
+
+```text
+Customer
+   │
+   │ enters company.com
+   ▼
+Web Dashboard
+   │
+   ▼
+Backend API
+   │
+   ├── Create Scan
+   │
+   ▼
+Message Queue
+   │
+   ├──────────────┬──────────────┬──────────────┐
+   ▼              ▼              ▼              ▼
+DNS Worker    TLS Worker    HTTP Worker    Security Worker
+   │              │              │              │
+   └──────────────┴──────────────┴──────────────┘
+                         │
+                         ▼
+                     PostgreSQL
+                         │
+                         ▼
+                   Security Score
+                         │
+              ┌──────────┴──────────┐
+              ▼                     ▼
+        Web Dashboard          PDF Report
+```
+
+The important architectural decision is:
+
+**Don't make the API itself perform the scans.**
+
+Scanning can take time and some checks may fail/timeout. We want:
+
+> API → queue → workers → database
+
+rather than:
+
+> API → scan for 30 seconds → response
+
+That gives you a legitimate reason to use asynchronous processing, queues, workers, containers and eventually Kubernetes.
+
+---
+
+# 1. Frontend
+
+I'd use:
+
+### **Next.js + TypeScript**
+
+Why?
+
+You get:
+
+* React
+* TypeScript
+* routing
+* authentication integration
+* good dashboard ecosystem
+* excellent production experience
+
+UI:
+
+```text
+Dashboard
+│
+├── Overview
+│
+├── Domains
+│    └── company.com
+│
+├── Scans
+│
+├── Vulnerabilities
+│
+├── Reports
+│
+└── Settings
+```
+
+The main screen could look roughly like:
+
+```text
+┌──────────────────────────────────────────────┐
+│ SecureLens                         👤 Mateus │
+├──────────────────────────────────────────────┤
+│                                              │
+│ Security Score                               │
+│                                              │
+│                 78                           │
+│              / 100                           │
+│                                              │
+│   🟢 12 passed                               │
+│   🟡  4 warnings                             │
+│   🔴  2 critical                              │
+│                                              │
+├──────────────────────────────────────────────┤
+│ Issues                                       │
+│                                              │
+│ 🔴 DMARC not configured                      │
+│ 🟠 Missing security header                   │
+│ 🟡 Certificate expires in 43 days            │
+│                                              │
+│             [ Generate Report ]              │
+└──────────────────────────────────────────────┘
+```
+
+---
+
+# 2. Backend
+
+This is where I'd use **Java + Spring Boot**.
+
+That is especially useful for you because you're already learning Java and APIs.
+
+### Stack
+
+**Java 21/25 LTS**
+
+**Spring Boot**
+
+Libraries/components:
+
+* Spring Web
+* Spring Security
+* Spring Data JPA
+* PostgreSQL driver
+* Bean Validation
+* OpenAPI/Swagger
+* Flyway
+
+Architecture:
+
+```text
+Controller
+    ↓
+Service
+    ↓
+Repository
+    ↓
+PostgreSQL
+```
+
+But don't put everything into 20 microservices.
+
+For V1 I'd use a:
+
+> **modular monolith + separate scanning workers**
+
+This is much more sensible.
+
+---
+
+# 3. Authentication
+
+Don't build authentication yourself.
+
+Use something like:
+
+### **Auth0 / Clerk / Supabase Auth**
+
+For your portfolio, though, I'd lean toward **Keycloak** if you want to demonstrate security infrastructure.
+
+Architecture:
+
+```text
+Browser
+   │
+   ▼
+Keycloak
+   │
+   │ JWT
+   ▼
+Spring Boot API
+```
+
+You learn:
+
+* OAuth2
+* OpenID Connect
+* JWT
+* roles
+* authentication
+* authorization
+
+And later:
+
+```text
+USER
+  ↓
+ORGANIZATION
+  ↓
+MEMBERS
+  ↓
+DOMAINS
+```
+
+So multiple people can belong to the same company.
+
+---
+
+# 4. Database
+
+### PostgreSQL
+
+This is an obvious choice.
+
+Initial schema:
+
+```text
+users
+organizations
+organization_members
+domains
+scans
+scan_results
+security_findings
+reports
+subscriptions
+```
+
+Example:
+
+```text
+organizations
+-------------------------
+id
+name
+created_at
+```
+
+```text
+domains
+-------------------------
+id
+organization_id
+domain
+created_at
+verified
+```
+
+```text
+scans
+-------------------------
+id
+domain_id
+status
+started_at
+finished_at
+score
+```
+
+```text
+security_findings
+-------------------------
+id
+scan_id
+category
+severity
+title
+description
+recommendation
+```
+
+This gives you proper relational modelling rather than shoving everything into JSON.
+
+---
+
+# 5. The most interesting part — Scanner Engine
+
+This is where your cybersecurity knowledge can grow.
+
+I'd split the scanning system into independent workers.
+
+### Worker 1 — DNS
+
+Checks:
+
+```text
+A
+AAAA
+MX
+TXT
+NS
+CNAME
+```
+
+And specifically:
+
+### SPF
+
+```text
+v=spf1 ...
+```
+
+### DMARC
+
+```text
+_dmarc.company.com
+```
+
+### DKIM
+
+Potentially detect common configurations.
+
+---
+
+# 6. TLS scanner
+
+Check:
+
+```text
+HTTPS available?
+Certificate valid?
+Certificate expiration?
+TLS version?
+Certificate hostname?
+Certificate chain?
+```
+
+Eventually:
+
+```text
+TLS 1.0 ❌
+TLS 1.1 ❌
+TLS 1.2 ✅
+TLS 1.3 ✅
+```
+
+---
+
+# 7. HTTP security scanner
+
+Request:
+
+```http
+GET /
+```
+
+Then inspect:
+
+```text
+Strict-Transport-Security
+Content-Security-Policy
+X-Content-Type-Options
+X-Frame-Options
+Referrer-Policy
+Permissions-Policy
+```
+
+For example:
+
+```text
+company.com
+
+Security Headers
+
+HSTS                  ❌
+CSP                   ❌
+X-Content-Type        ✅
+X-Frame-Options       ✅
+Referrer-Policy       ⚠️
+```
+
+This is extremely easy to explain to a customer.
+
+---
+
+# 8. Technology detection
+
+You could identify technologies used by the website.
+
+For example:
+
+```text
+Web Server
+──────────────
+Nginx
+
+Framework
+──────────────
+WordPress
+
+JavaScript
+──────────────
+React
+```
+
+Potential technologies:
+
+* WordPress
+* Drupal
+* Joomla
+* Nginx
+* Apache
+* Cloudflare
+* common JS frameworks
+
+This can become useful later for vulnerability intelligence.
+
+---
+
+# 9. Vulnerability intelligence
+
+**Don't initially attempt to become a full vulnerability scanner.**
+
+That's where projects can quickly become dangerous, complicated, and legally problematic.
+
+Instead, V1 should focus on:
+
+> **passive security posture assessment**
+
+For example:
+
+```text
+WordPress detected
+Version: 6.x
+
+Known security information:
+No immediate version-specific finding available
+```
+
+Later you can integrate legitimate vulnerability databases/APIs.
+
+---
+
+# 10. Queue
+
+This is an important component.
+
+I'd use:
+
+### **RabbitMQ**
+
+Flow:
+
+```text
+POST /scans
+
+       ↓
+
+Spring Boot
+
+       ↓
+
+RabbitMQ
+
+       ↓
+
+┌───────────────┐
+│ scan.dns      │
+│ scan.tls      │
+│ scan.http     │
+│ scan.tech     │
+└───────────────┘
+```
+
+Each worker consumes jobs.
+
+For example:
+
+```json
+{
+  "scanId": "12345",
+  "domain": "company.com"
+}
+```
+
+---
+
+# 11. Workers
+
+I'd build these as **Java/Spring Boot services** initially.
+
+```text
+scanner-dns
+scanner-tls
+scanner-http
+scanner-tech
+```
+
+Each one:
+
+```text
+RabbitMQ
+   ↓
+Worker
+   ↓
+Perform check
+   ↓
+Store result
+```
+
+Then your main API doesn't care how scanning happens.
+
+---
+
+# 12. Redis
+
+I'd add:
+
+### Redis
+
+But **not because we need it immediately**.
+
+Use it for:
+
+* caching
+* rate limiting
+* temporary scan state
+* potentially distributed locks
+
+Example:
+
+```text
+User scans company.com
+
+        ↓
+
+Redis
+
+"company.com scan running"
+
+        ↓
+
+prevent duplicate scans
+```
+
+---
+
+# 13. PDF reports
+
+This is actually a valuable feature.
+
+Customer presses:
+
+> **Download Security Report**
+
+Your backend generates:
+
+```text
+SECURELENS
+
+Security Assessment
+
+company.com
+
+Security Score
+78 / 100
+
+Executive Summary
+
+...
+
+Critical Findings
+...
+
+Recommendations
+...
+```
+
+I'd generate PDFs server-side.
+
+Potentially:
+
+**Java + OpenHTMLToPDF**
+
+or another HTML → PDF solution.
+
+---
+
+# 14. Email
+
+We'll need transactional email.
+
+For example:
+
+### Resend
+
+or
+
+### SendGrid
+
+Emails:
+
+> 🔴 Security issue detected
+
+> Your domain `company.com` has a new critical finding.
+
+Also:
+
+> Your weekly security report is ready.
+
+---
+
+# 15. Scheduled scans
+
+This is where the product starts becoming a **real SaaS**.
+
+Customer selects:
+
+> Scan every week
+
+Then:
+
+```text
+Scheduler
+    ↓
+Create scan
+    ↓
+RabbitMQ
+    ↓
+Workers
+    ↓
+Results
+    ↓
+Score
+    ↓
+Email
+```
+
+So you can sell:
+
+### Free
+
+1 manual scan
+
+### €9.99/month
+
+Weekly monitoring
+
+### €29.99/month
+
+Daily monitoring + reports
+
+---
+
+# 16. Docker
+
+Every backend component gets containerized.
+
+```text
+docker-compose.yml
+
+frontend
+backend
+postgres
+rabbitmq
+redis
+keycloak
+scanner-dns
+scanner-http
+scanner-tls
+scanner-tech
+```
+
+Then one command:
+
+```bash
+docker compose up
+```
+
+and your entire application runs locally.
+
+That's fantastic for your portfolio.
+
+---
+
+# 17. Kubernetes
+
+**Do not start here.**
+
+Build the application with Docker first.
+
+Once V1 works:
+
+```text
+Docker
+   ↓
+Kubernetes
+```
+
+Then:
+
+```text
+                    Kubernetes Cluster
+                           │
+          ┌────────────────┼────────────────┐
+          │                │                │
+      frontend          backend          workers
+          │                │                │
+          │           ┌────┴────┐       ┌───┴────┐
+          │           │         │       │        │
+          │        API pods   ...    DNS pods  TLS pods
+          │
+          └────────────────────────────────────
+```
+
+And this gives you actual Kubernetes experience rather than deploying a Todo app to Kubernetes for the sake of saying you used Kubernetes.
+
+---
+
+# 18. CI/CD
+
+GitHub:
+
+```text
+git push
+    ↓
+GitHub Actions
+    ↓
+Run tests
+    ↓
+Build
+    ↓
+Docker image
+    ↓
+Push to registry
+    ↓
+Deploy
+```
+
+Eventually:
+
+```text
+GitHub
+   ↓
+GitHub Actions
+   ↓
+Docker Hub / GHCR
+   ↓
+Kubernetes
+```
+
+---
+
+# 19. Monitoring
+
+Eventually I'd add:
+
+### Prometheus
+
+Metrics:
+
+```text
+scans_total
+scans_failed
+scan_duration
+queue_size
+api_requests
+```
+
+### Grafana
+
+Dashboard:
+
+```text
+API Requests       12,431
+Active Scans           32
+Failed Scans             4
+Avg Scan Time          8.2s
+Queue Size              12
+```
+
+And:
+
+### Loki
+
+for logs.
+
+This becomes a **very impressive portfolio architecture**.
+
+---
+
+# 20. Cloud
+
+For V1 I'd keep costs extremely low.
+
+Something like:
+
+```text
+Cloud VM / VPS
+
+        │
+        ├── Docker
+        │
+        ├── PostgreSQL
+        ├── RabbitMQ
+        ├── Redis
+        └── Application
+```
+
+Once there's actual traction:
+
+```text
+AWS / Azure / GCP
+```
+
+I'd probably choose **AWS** for your portfolio because it gives you another highly marketable technology.
+
+Potential services later:
+
+* ECS/EKS
+* RDS PostgreSQL
+* ElastiCache
+* S3
+* CloudFront
+* Route 53
+* SES
+
+But **don't start by throwing 15 AWS services at the project**.
+
+---
+
+# Final architecture I'd target
+
+```text
+                         INTERNET
+                            │
+                            ▼
+                       Cloudflare
+                            │
+                            ▼
+                       Next.js Web
+                            │
+                            ▼
+                    ┌───────────────┐
+                    │  Spring Boot  │
+                    │      API      │
+                    └───────┬───────┘
+                            │
+             ┌──────────────┼──────────────┐
+             │              │              │
+             ▼              ▼              ▼
+         PostgreSQL       Redis         RabbitMQ
+             │                             │
+             │              ┌──────────────┼──────────────┐
+             │              │              │              │
+             │              ▼              ▼              ▼
+             │         DNS Worker      TLS Worker     HTTP Worker
+             │
+             │                             │
+             │                             ▼
+             │                       Tech Worker
+             │                             │
+             └──────────────┬──────────────┘
+                            ▼
+                     Security Engine
+                            │
+                            ▼
+                       Score Engine
+                            │
+                    ┌───────┴───────┐
+                    ▼               ▼
+                Dashboard       PDF Report
+                                    │
+                                    ▼
+                                  Email
+```
+
+### Technology stack
+
+| Layer         | Technology                   |
+| ------------- | ---------------------------- |
+| Frontend      | **Next.js + TypeScript**     |
+| Backend       | **Java + Spring Boot**       |
+| Database      | **PostgreSQL**               |
+| Queue         | **RabbitMQ**                 |
+| Cache         | **Redis**                    |
+| Auth          | **Keycloak / OAuth2 / OIDC** |
+| API           | **REST + OpenAPI**           |
+| Scanner       | **Java workers**             |
+| PDF           | **HTML → PDF**               |
+| Email         | **Resend**                   |
+| Containers    | **Docker**                   |
+| Orchestration | **Kubernetes**               |
+| CI/CD         | **GitHub Actions**           |
+| Monitoring    | **Prometheus + Grafana**     |
+| Logs          | **Loki**                     |
+| Cloud         | **AWS eventually**           |
+| DNS/CDN       | **Cloudflare**               |
+
+## But here's the important part
+
+**We should NOT build all of this immediately.**
+
+I'd make this a series of versions:
+
+### V0 — 1–2 weeks
+
+`Domain → scan → score`
+
+Only:
+
+* DNS
+* HTTPS
+* TLS
+* security headers
+* SPF
+* DMARC
+
+No accounts. No payments. No Kubernetes.
+
+### V1 — MVP
+
+Add:
+
+* accounts
+* dashboard
+* PostgreSQL
+* scan history
+* PDF reports
+* Docker
+
+### V2 — SaaS
+
+Add:
+
+* organizations
+* scheduled scans
+* email alerts
+* Stripe subscriptions
+* Redis
+* RabbitMQ workers
+
+### V3 — Production architecture
+
+Add:
+
+* Kubernetes
+* CI/CD
+* monitoring
+* logging
+* cloud deployment
+* autoscaling
+
+### V4 — Business
+
+Add:
+
+* vulnerability intelligence
+* technology detection
+* historical security trends
+* team accounts
+* API access
+* white-label reports
+
+**That is the project I'd build with you.** It starts small enough that you can actually finish it, but the architecture has a natural path all the way from a portfolio project to a potentially sellable B2B SaaS.
+
+
+
+
+
+
+
+

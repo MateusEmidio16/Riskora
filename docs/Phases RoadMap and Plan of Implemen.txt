@@ -1,0 +1,1434 @@
+Phases RoadMap and Plan of Implementation
+
+You already have the architecture; now we turn it into an executable project.
+
+I would treat this as if you were joining a small startup as the backend/full-stack engineer.
+
+# 🚀 SecureLens — Roadmap from 0 → MVP → SaaS
+
+Your first objective is **not revenue**.
+
+Your first objective is:
+
+> **Enter a domain → run a real security assessment → produce a useful score/report.**
+
+Everything else comes afterward.
+
+---
+
+# PHASE 0 — Define exactly what we're building
+
+Before opening IntelliJ, create a GitHub repository:
+
+```text
+securelens
+```
+
+Inside it:
+
+```text
+securelens/
+│
+├── README.md
+├── docs/
+│   ├── architecture.md
+│   ├── security-model.md
+│   └── api.md
+│
+├── backend/
+├── frontend/
+├── scanners/
+│
+├── docker-compose.yml
+└── .gitignore
+```
+
+### Your first README should answer:
+
+**What is SecureLens?**
+
+> SecureLens is a SaaS platform that performs automated, passive security assessments of publicly accessible domains and provides businesses with actionable security recommendations.
+
+Then define the V1 scope.
+
+### V1 checks
+
+We are going to implement:
+
+**DNS**
+
+* A
+* AAAA
+* MX
+* SPF
+* DMARC
+
+**TLS**
+
+* HTTPS available
+* certificate validity
+* expiration
+* hostname
+* TLS version
+
+**HTTP**
+
+* HSTS
+* CSP
+* X-Content-Type-Options
+* X-Frame-Options
+* Referrer-Policy
+
+**Basic domain information**
+
+* DNS configuration
+* HTTP status
+* redirects
+
+That's enough.
+
+---
+
+# PHASE 1 — Set up your development environment
+
+Install:
+
+### Required
+
+* IntelliJ IDEA
+* Java 21+
+* Node.js
+* npm
+* Docker Desktop
+* Git
+* GitHub account
+* PostgreSQL client such as DBeaver
+
+I'd also install:
+
+* Postman or Bruno
+* VS Code
+* kubectl **later**, not necessary now
+
+Check:
+
+```bash
+java --version
+node --version
+npm --version
+docker --version
+git --version
+```
+
+Everything should work before you start.
+
+---
+
+# PHASE 2 — Create the Git repository
+
+Create:
+
+```text
+securelens
+```
+
+Then:
+
+```bash
+git init
+```
+
+Your first commit should literally be:
+
+```text
+Initial project structure
+```
+
+Don't underestimate this.
+
+We're going to use Git properly from day one.
+
+---
+
+# PHASE 3 — Create the backend
+
+Go to:
+
+**Spring Initializr**
+
+Create:
+
+```text
+Project: Maven
+Language: Java
+Spring Boot: latest stable
+Java: 21
+```
+
+Dependencies:
+
+```text
+Spring Web
+Spring Data JPA
+PostgreSQL Driver
+Validation
+Spring Boot Actuator
+Flyway
+```
+
+Don't add RabbitMQ, Redis, Keycloak, etc. yet.
+
+Download → put it in:
+
+```text
+securelens/backend
+```
+
+Open it in IntelliJ.
+
+---
+
+# PHASE 4 — Make the first endpoint
+
+Before touching databases or scanners:
+
+```java
+@RestController
+@RequestMapping("/api")
+public class HealthController {
+
+    @GetMapping("/health")
+    public String health() {
+        return "SecureLens API is running";
+    }
+}
+```
+
+Run Spring Boot.
+
+Go to:
+
+```text
+http://localhost:8080/api/health
+```
+
+You should get:
+
+```text
+SecureLens API is running
+```
+
+### Stop here.
+
+Your first milestone is:
+
+> **Browser → Spring Boot → Response**
+
+Then commit:
+
+```bash
+git add .
+git commit -m "Create initial Spring Boot API"
+```
+
+---
+
+# PHASE 5 — Connect PostgreSQL
+
+Now create:
+
+```text
+docker-compose.yml
+```
+
+Initially, ONLY PostgreSQL.
+
+Conceptually:
+
+```text
+Spring Boot
+     │
+     ▼
+PostgreSQL
+```
+
+Create:
+
+```text
+securelens
+```
+
+database.
+
+Then configure Spring:
+
+```text
+spring.datasource.url
+spring.datasource.username
+spring.datasource.password
+```
+
+**Do not hardcode secrets in Git.**
+
+Use:
+
+```text
+.env
+```
+
+and:
+
+```text
+application-local.yml
+```
+
+with `.gitignore`.
+
+---
+
+# PHASE 6 — Design the database
+
+Before writing entities, draw the model.
+
+Start with:
+
+```text
+Organization
+      │
+      │
+      ▼
+    Domain
+      │
+      │
+      ▼
+     Scan
+      │
+      │
+      ▼
+ScanResult
+      │
+      │
+      ▼
+Finding
+```
+
+For V1:
+
+### Organization
+
+```text
+id
+name
+created_at
+```
+
+### Domain
+
+```text
+id
+organization_id
+hostname
+created_at
+```
+
+### Scan
+
+```text
+id
+domain_id
+status
+started_at
+finished_at
+score
+```
+
+### Finding
+
+```text
+id
+scan_id
+category
+severity
+title
+description
+recommendation
+```
+
+Don't over-engineer it.
+
+---
+
+# PHASE 7 — Flyway migrations
+
+This is important.
+
+Don't rely on Hibernate automatically creating your production database.
+
+Create migrations:
+
+```text
+V1__create_organizations.sql
+V2__create_domains.sql
+V3__create_scans.sql
+V4__create_findings.sql
+```
+
+Now your database structure is version controlled.
+
+That is a **real-world engineering practice** worth having in your portfolio.
+
+---
+
+# PHASE 8 — Build your first real API
+
+Now create:
+
+```http
+POST /api/domains
+```
+
+Request:
+
+```json
+{
+  "hostname": "example.com"
+}
+```
+
+Response:
+
+```json
+{
+  "id": 1,
+  "hostname": "example.com"
+}
+```
+
+Then:
+
+```http
+GET /api/domains
+```
+
+Then:
+
+```http
+GET /api/domains/{id}
+```
+
+At this point you have:
+
+```text
+Frontend ❌
+       ↓
+Spring Boot
+       ↓
+PostgreSQL
+```
+
+and can create domains.
+
+---
+
+# PHASE 9 — Build the scanner WITHOUT RabbitMQ
+
+This is extremely important.
+
+Don't immediately create:
+
+> RabbitMQ + 5 workers + Kubernetes + Redis
+
+You'll make your life miserable.
+
+First build:
+
+```text
+POST /api/scans
+       ↓
+ScanService
+       ↓
+SecurityScanner
+       ↓
+Results
+       ↓
+PostgreSQL
+```
+
+The scanner can initially be a Java service inside your backend.
+
+---
+
+# PHASE 10 — Build DNS scanner
+
+Create something like:
+
+```text
+DnsScanner
+```
+
+Input:
+
+```text
+example.com
+```
+
+Output:
+
+```text
+A records
+AAAA records
+MX records
+TXT records
+```
+
+Then parse TXT records.
+
+Detect:
+
+### SPF
+
+```text
+v=spf1
+```
+
+### DMARC
+
+Query:
+
+```text
+_dmarc.example.com
+```
+
+Potential result:
+
+```text
+SPF: PASS
+DMARC: FAIL
+```
+
+---
+
+# PHASE 11 — Create your Finding model
+
+Instead of returning random booleans, standardize everything.
+
+Example:
+
+```json
+{
+  "category": "EMAIL_SECURITY",
+  "severity": "HIGH",
+  "title": "DMARC is not configured",
+  "description": "The domain does not publish a DMARC policy.",
+  "recommendation": "Configure a DMARC record."
+}
+```
+
+Your scanner should produce **findings**.
+
+That's important because eventually every scanner will use the same model.
+
+---
+
+# PHASE 12 — Build the TLS scanner
+
+Create:
+
+```text
+TlsScanner
+```
+
+Input:
+
+```text
+example.com
+```
+
+Check:
+
+```text
+HTTPS
+certificate
+expiration
+hostname
+TLS protocol
+```
+
+Return findings.
+
+For example:
+
+```text
+TLS
+│
+├── HTTPS available        PASS
+├── Certificate valid      PASS
+├── Certificate hostname   PASS
+├── Certificate expiration PASS
+└── TLS version            PASS
+```
+
+---
+
+# PHASE 13 — Build HTTP scanner
+
+Create:
+
+```text
+HttpSecurityScanner
+```
+
+Make a request:
+
+```text
+https://example.com
+```
+
+Inspect:
+
+```text
+Strict-Transport-Security
+Content-Security-Policy
+X-Content-Type-Options
+X-Frame-Options
+Referrer-Policy
+```
+
+Then generate findings.
+
+Example:
+
+```text
+CSP missing
+Severity: MEDIUM
+```
+
+---
+
+# PHASE 14 — Build the scoring engine
+
+Now you have findings.
+
+We need:
+
+```text
+Findings
+    ↓
+ScoreEngine
+    ↓
+0–100
+```
+
+Don't try to invent some mathematically perfect cybersecurity score.
+
+Start simple.
+
+For example:
+
+```text
+Critical = -25
+High     = -15
+Medium   = -8
+Low      = -3
+```
+
+Starting score:
+
+```text
+100
+```
+
+Then:
+
+```text
+100
+- 15 DMARC
+- 8 CSP
+- 3 Referrer Policy
+------------------
+74
+```
+
+Result:
+
+> **74 / 100**
+
+Later we'll make the scoring system considerably more sophisticated.
+
+---
+
+# PHASE 15 — First major milestone 🎯
+
+At this point you should be able to do:
+
+```http
+POST /api/domains
+```
+
+then:
+
+```http
+POST /api/scans
+```
+
+and receive:
+
+```json
+{
+  "scanId": 42,
+  "status": "COMPLETED",
+  "score": 74,
+  "findings": [
+    {
+      "severity": "HIGH",
+      "title": "DMARC not configured"
+    },
+    {
+      "severity": "MEDIUM",
+      "title": "Content Security Policy missing"
+    }
+  ]
+}
+```
+
+### THIS is your first MVP.
+
+Not Kubernetes.
+
+Not Stripe.
+
+Not AI.
+
+Not mobile.
+
+**A real scan that produces useful results.**
+
+---
+
+# PHASE 16 — Build the frontend
+
+Now create:
+
+```text
+frontend/
+```
+
+with:
+
+**Next.js + TypeScript**
+
+Pages:
+
+```text
+/
+├── Landing page
+│
+├── login
+│
+└── dashboard
+      │
+      ├── Overview
+      ├── Domains
+      ├── Scans
+      └── Reports
+```
+
+Your first UI doesn't need to be beautiful.
+
+It needs to work.
+
+---
+
+# PHASE 17 — Connect frontend → backend
+
+Flow:
+
+```text
+User
+ │
+ │ enters
+ ▼
+example.com
+ │
+ ▼
+POST /api/domains
+ │
+ ▼
+POST /api/scans
+ │
+ ▼
+Backend
+ │
+ ▼
+Scanner
+ │
+ ▼
+PostgreSQL
+ │
+ ▼
+Frontend
+```
+
+The dashboard displays:
+
+```text
+example.com
+
+Security Score
+
+        74
+       /100
+
+🔴 0 Critical
+🟠 1 High
+🟡 2 Medium
+🟢 12 Passed
+```
+
+---
+
+# PHASE 18 — Authentication
+
+**Only now.**
+
+Integrate:
+
+### Keycloak
+
+You'll learn:
+
+```text
+OAuth2
+OIDC
+JWT
+Access tokens
+Roles
+```
+
+Your architecture becomes:
+
+```text
+Browser
+   │
+   ▼
+Keycloak
+   │
+   ▼
+JWT
+   │
+   ▼
+Spring Boot
+```
+
+Now users have accounts.
+
+---
+
+# PHASE 19 — Organizations
+
+Now transform:
+
+```text
+User → Domains
+```
+
+into:
+
+```text
+User
+ │
+ ▼
+Organization
+ │
+ ├── Member
+ ├── Member
+ │
+ └── Domains
+       ├── company.com
+       └── company.pt
+```
+
+This is when it starts becoming a legitimate B2B SaaS.
+
+---
+
+# PHASE 20 — RabbitMQ
+
+Now we refactor scanning.
+
+Currently:
+
+```text
+API
+ ↓
+Scanner
+ ↓
+Response
+```
+
+Change it to:
+
+```text
+API
+ ↓
+Create Scan
+ ↓
+RabbitMQ
+ ↓
+Workers
+```
+
+Create:
+
+```text
+dns-worker
+tls-worker
+http-worker
+```
+
+Now you have genuinely asynchronous processing.
+
+---
+
+# PHASE 21 — Redis
+
+Add Redis for:
+
+### Rate limiting
+
+For example:
+
+```text
+Free user:
+5 scans/day
+```
+
+Also:
+
+* duplicate scan prevention
+* caching
+* temporary state
+
+---
+
+# PHASE 22 — Scheduled scans
+
+Now your product becomes much more valuable.
+
+Customer chooses:
+
+```text
+Scan frequency
+
+○ Manual
+● Weekly
+○ Daily
+```
+
+Scheduler:
+
+```text
+Monday 03:00
+
+     ↓
+
+Create Scan
+
+     ↓
+
+RabbitMQ
+
+     ↓
+
+Workers
+
+     ↓
+
+Results
+
+     ↓
+
+Score
+
+     ↓
+
+Email
+```
+
+Now you have something people can actually pay for.
+
+---
+
+# PHASE 23 — Email alerts
+
+Integrate Resend.
+
+Example:
+
+> **SecureLens detected a security issue**
+
+```text
+company.com
+
+Security Score
+78 → 62
+
+New finding:
+
+🔴 Certificate expires in 7 days
+```
+
+That's a useful product feature.
+
+---
+
+# PHASE 24 — PDF reports
+
+Create:
+
+```text
+Generate Report
+```
+
+Report:
+
+```text
+SECURELENS
+Security Assessment
+
+Company:
+Acme Lda.
+
+Domain:
+acme.pt
+
+Score:
+78/100
+
+Executive Summary
+
+...
+
+Findings
+
+🔴 Critical
+🟠 High
+🟡 Medium
+🟢 Passed
+
+Recommendations
+...
+```
+
+This becomes something a business can send internally.
+
+---
+
+# PHASE 25 — Stripe
+
+Only after the product works.
+
+Plans:
+
+### Free
+
+```text
+1 domain
+1 scan/month
+basic report
+```
+
+### Pro — €9.99
+
+```text
+5 domains
+weekly scanning
+email alerts
+PDF reports
+```
+
+### Business — €29.99
+
+```text
+25 domains
+daily scanning
+team members
+API
+advanced reports
+```
+
+Now:
+
+```text
+Stripe
+   ↓
+Subscription
+   ↓
+Webhook
+   ↓
+Spring Boot
+   ↓
+Update subscription
+```
+
+---
+
+# PHASE 26 — Docker
+
+Containerize:
+
+```text
+frontend
+backend
+postgres
+rabbitmq
+redis
+keycloak
+workers
+```
+
+Run everything locally:
+
+```bash
+docker compose up
+```
+
+This is when your project starts looking seriously professional.
+
+---
+
+# PHASE 27 — CI/CD
+
+GitHub Actions:
+
+```text
+git push
+   ↓
+Tests
+   ↓
+Build
+   ↓
+Docker
+   ↓
+Image
+   ↓
+Deploy
+```
+
+Add:
+
+* unit tests
+* integration tests
+* API tests
+* scanner tests
+
+---
+
+# PHASE 28 — Kubernetes
+
+**Now.**
+
+Not before.
+
+Start with:
+
+```text
+Deployment
+Service
+ConfigMap
+Secret
+Ingress
+```
+
+Then:
+
+```text
+HPA
+```
+
+for workers.
+
+This will connect directly with the Kubernetes concepts you've been studying.
+
+---
+
+# PHASE 29 — Observability
+
+Add:
+
+```text
+Prometheus
+Grafana
+Loki
+```
+
+Monitor:
+
+```text
+API latency
+scan duration
+failed scans
+queue depth
+worker health
+database connections
+```
+
+Now you can legitimately say:
+
+> "I built and operated a containerized asynchronous SaaS platform."
+
+---
+
+# PHASE 30 — Security hardening
+
+This product needs to be **more secure than average**, because you're literally selling security.
+
+Implement:
+
+### API
+
+* input validation
+* rate limiting
+* authentication
+* authorization
+* CORS
+* secure headers
+
+### Database
+
+* least privilege
+* parameterized queries
+* encrypted credentials
+
+### Infrastructure
+
+* secrets
+* HTTPS
+* restricted network access
+* container security
+
+### Scanner
+
+This one is especially important.
+
+You need strict controls around what the scanner is allowed to access.
+
+For V1, keep it to **user-authorized public domains and passive checks**. Don't turn it into an arbitrary network scanner.
+
+---
+
+# Your actual development order
+
+If you want the simplest possible checklist, **follow this exact order**:
+
+```text
+☐ GitHub repository
+☐ README
+☐ Spring Boot project
+☐ /health endpoint
+☐ PostgreSQL
+☐ Flyway
+☐ Database model
+☐ Domain API
+☐ Scan API
+☐ DNS scanner
+☐ TLS scanner
+☐ HTTP scanner
+☐ Finding model
+☐ Score engine
+☐ First complete scan
+────────────────────────
+        MVP 🎯
+────────────────────────
+☐ Next.js frontend
+☐ Dashboard
+☐ Scan results UI
+☐ Authentication
+☐ Organizations
+☐ RabbitMQ
+☐ Scanner workers
+☐ Redis
+☐ Scheduled scans
+☐ Email
+☐ PDF reports
+☐ Stripe
+────────────────────────
+       SaaS 💰
+────────────────────────
+☐ Docker
+☐ CI/CD
+☐ Cloud
+☐ Kubernetes
+☐ Monitoring
+☐ Security hardening
+```
+
+## And your first week should be MUCH simpler
+
+### Day 1
+
+**Environment + Git**
+
+Get:
+
+```text
+Java
+Node
+Docker
+Git
+IntelliJ
+Postman
+```
+
+working.
+
+Create repo.
+
+---
+
+### Day 2
+
+**Spring Boot**
+
+Build:
+
+```text
+GET /api/health
+```
+
+Connect PostgreSQL.
+
+---
+
+### Day 3
+
+**Database**
+
+Implement:
+
+```text
+Organization
+Domain
+Scan
+Finding
+```
+
+with Flyway.
+
+---
+
+### Day 4
+
+**Domain API**
+
+Implement:
+
+```text
+POST /domains
+GET /domains
+GET /domains/{id}
+```
+
+---
+
+### Day 5
+
+**First scanner**
+
+Don't build the entire scanner.
+
+Just:
+
+```text
+DNS → A / AAAA / MX / TXT
+```
+
+---
+
+### Day 6
+
+**Security checks**
+
+Add:
+
+```text
+SPF
+DMARC
+```
+
+---
+
+### Day 7
+
+Make:
+
+```text
+Domain
+   ↓
+Scan
+   ↓
+DNS
+   ↓
+SPF
+   ↓
+DMARC
+   ↓
+Findings
+   ↓
+Score
+```
+
+work from start to finish.
+
+---
+
+# One rule I want you to follow
+
+**Don't start with the sexy stuff.**
+
+When you're tempted to say:
+
+> "Let's configure Kubernetes."
+
+Don't.
+
+When you're tempted:
+
+> "Let's make the dashboard beautiful."
+
+Don't.
+
+When you're tempted:
+
+> "Let's integrate AI."
+
+Definitely don't. 😂
+
+Your first target is this:
+
+```text
+                    example.com
+                         │
+                         ▼
+                    POST /scan
+                         │
+                         ▼
+                    DNS Scanner
+                         │
+                         ▼
+                    Security Checks
+                         │
+                         ▼
+                  ┌───────────────┐
+                  │ Score: 74/100 │
+                  └───────────────┘
+                         │
+                         ▼
+                  Security Findings
+```
+
+**Get that working first.**
+
+Once that works, you have a foundation. Then we can progressively turn it into the architecture we designed.
+
+And importantly, **don't try to figure out every technology yourself before writing code**. As you build each phase, we can go component-by-component — e.g. *"today we're doing PostgreSQL + Flyway; explain exactly what I need to create and why"* — and build SecureLens properly rather than blindly copying an architecture.
